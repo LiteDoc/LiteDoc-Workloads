@@ -1,193 +1,106 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"github.com/gocql/gocql"
 	"go.etcd.io/etcd/clientv3"
-	"math"
 	"math/rand"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
 )
 
 var cassPool [globalMaxThread]*gocql.Session
-var etcdCntx [globalMaxThread]context.Context
 var etcdClnt [globalMaxThread]*clientv3.Client
 
-var exitedWg sync.WaitGroup
+var producerExitWg sync.WaitGroup
+var consumerExitWg sync.WaitGroup
+var observerExitWg sync.WaitGroup
 
-func producer(toProducer <-chan Operation, toConsumer chan<- Operation, toObserver chan<- Operation,
-	opMax int) {
-	source := rand.NewSource(time.Now().UnixNano())
-	generator := rand.New(source)
+func simpleConsumer(toObserver chan<- Operation,
+	txIdx int, bmType BmType, csType CsType, csArgs ...int) {
+	src := rand.NewSource(time.Now().UnixNano() + int64(txIdx))
+	gen := rand.New(src)
+	var blockId string
+	var blockIdInt int
+	var numOp int
 
-	var outstanding [maxBlock]int
-	var outstandingCnt = opMax
-	for i := 0; i < opMax || outstandingCnt != 0; {
-
-		if i == opMax {
-			op := <-toProducer
-			outstanding[op.BlockIdInt] = 0
-			outstandingCnt--
-		} else {
-
-			op := Operation{}
-
-			var blockIdInt int
-			for {
-				blockIdInt = generator.Intn(maxBlock)
-				if outstanding[blockIdInt] != 1 {
-					break
-				}
-			}
-			op.BlockIdInt = blockIdInt
-
-			a, b := generator.Int63(), int64(0.8*float64(math.MaxInt64))
-			if a <= b {
-				op.Type = R
-			} else {
-				op.Type = W
-			}
-
-			select {
-			case op := <-toProducer:
-				outstanding[op.BlockIdInt] = 0
-				outstandingCnt--
-			case toConsumer <- op:
-				outstanding[blockIdInt] = 1
-				i++
-			}
+	for i, num := range csArgs {
+		if i == 0 {
+			blockId = blockIdPrefix + strconv.Itoa(num)
+			blockIdInt = num
+		} else if i == 1 {
+			numOp = num
 		}
 	}
-	close(toConsumer)
-	fmt.Println("outstanding", outstanding)
-	close(toObserver)
-	exitedWg.Done()
-}
 
-func consumer(toObserver chan<- Operation, toConsumer <-chan Operation,
-	txIdx int, bmType BmType, csType CsType, csArgs ...string) {
-	switch csType {
-	case Verbatim:
-		source := rand.NewSource(time.Now().UnixNano() + int64(txIdx))
-		generator := rand.New(source)
+	for i := 0; i < numOp; {
+		op := Operation{}
+		op.BlockIdInt = blockIdInt
+		op.Type = R
+		op.Start = time.Now()
+		if bmType != EtcdRaft {
+			GetBlockCass(*cassPool[txIdx], blockId)
+		} else {
+			GetBlockEtcd(*etcdClnt[txIdx], blockId)
+		}
+		op.End = time.Now()
+		op.Result = S
+		toObserver <- op
+		i++
 
-		for op := range toConsumer {
-			blockId := blockIdPrefix + strconv.Itoa(op.BlockIdInt)
+		if csType == ReadWrite {
+			op := Operation{}
+			op.BlockIdInt = blockIdInt
+			op.Type = W
 			op.Start = time.Now()
-			if op.Type == R {
-				//fmt.Println(txIdx, "get", blockId)
-				if bmType != EtcdRaft {
-					GetBlockCass(*cassPool[txIdx], blockId)
-				} else {
-					GetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], blockId)
-				}
+			b := &Block{blockId, randString(gen, 50)}
+			if bmType == CassOne {
+				SetBlockCassOne(*cassPool[txIdx], b)
+			} else if bmType == CassLwt {
+				SetBlockCassLwt(*cassPool[txIdx], b)
 			} else {
-				b := &Block{blockId, randString(generator, 50)}
-				if bmType == CassOne {
-					SetBlockCassOne(*cassPool[txIdx], b)
-				} else if bmType == CassLwt {
-					SetBlockCassLwt(*cassPool[txIdx], b)
-				} else {
-					SetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], b)
-				}
+				SetBlockEtcd(*etcdClnt[txIdx], b)
 			}
 			op.End = time.Now()
-			op.Result = S // TODO
+			op.Result = S
 			toObserver <- op
+			i++
 		}
 	}
-
-	fmt.Println(txIdx, "consumer exit")
-	exitedWg.Done()
+	consumerExitWg.Done()
 }
 
-func observer(toProducer chan<- Operation, toObserver <-chan Operation,
-) {
-	//successful read, successful write, failed read, failed write
-	var sRead, sWrite, fRead, fWrite int
-	//latencies of those operations
-	var sReadLat, sWriteLat = make(latency, 0), make(latency, 0)
-	var fReadLat, fWriteLat = make(latency, 0), make(latency, 0)
-	bmStart, bmEnd := time.Now(), time.Now()
+func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
+	numOpPerThread := 1000
 
-	for op := range toObserver {
-		if sRead == 0 && sWrite == 0 && fRead == 0 && fWrite == 0 {
-			bmStart = op.Start
-		}
-		bmEnd = op.End
-		duration := op.End.Sub(op.Start)
-		if op.Result == S && op.Type == R {
-			sRead++
-			sReadLat = append(sReadLat, duration)
-		} else if op.Result == S && op.Type == W {
-			sWrite++
-			sWriteLat = append(sWriteLat, duration)
-		} else if op.Result == F && op.Type == R {
-			fRead++
-			fReadLat = append(fReadLat, duration)
-		} else {
-			fWrite++
-			fWriteLat = append(fWriteLat, duration)
-		}
-		toProducer <- op
-	}
+	observerExitWg.Add(1)
+	consumerExitWg.Add(readWrite + readOnly)
 
-	//sort 4 arrays to get percentile information
-	sort.Sort(sReadLat)
-	sort.Sort(sWriteLat)
-	sort.Sort(fReadLat)
-	sort.Sort(fWriteLat)
-	//
-	runTime := bmEnd.Sub(bmStart).Seconds()
-	bmStats := BmStats{
-		Timestamp:  time.Now().String(),
-		Runtime:    runTime,
-		Throughput: float64(sRead+sWrite+fRead+fWrite) / runTime,
-
-		SRead:       sRead,
-		SReadAvgLat: sReadLat.getAvgLat(),
-		SRead95pLat: sReadLat.get95pLat(),
-
-		SWrite:       sWrite,
-		SWriteAvgLat: sWriteLat.getAvgLat(),
-		SWrite95pLat: sWriteLat.get95pLat(),
-
-		FRead:       fRead,
-		FReadAvgLat: fReadLat.getAvgLat(),
-		FRead95pLat: fReadLat.get95pLat(),
-
-		FWrite:       fWrite,
-		FWriteAvgLat: fWriteLat.getAvgLat(),
-		FWrite95pLat: fWriteLat.get95pLat(),
-	}
-	fmt.Println(bmStats.String())
-	fmt.Println("observer exit")
-	exitedWg.Done()
-}
-
-func benchmark(currMaxThread int, bmType BmType, csType CsType, csArgs ...string) {
-	exitedWg.Add(currMaxThread + 2)
-	toConsumer := make(chan Operation)
 	toProducer := make(chan Operation)
 	toObserver := make(chan Operation)
-	go producer(toProducer, toConsumer, toObserver, 5000)
-	go observer(toProducer, toObserver)
-	for i := 0; i < currMaxThread; i++ {
-		go consumer(toObserver, toConsumer, i, bmType, csType, csArgs...)
+
+	go observer(toProducer, toObserver, true)
+	for i := 0; i < readWrite; i++ {
+		go simpleConsumer(toObserver, i, bmType, ReadWrite, i, numOpPerThread)
 	}
-	exitedWg.Wait()
+	for i := 0; i < readOnly; i++ {
+		go simpleConsumer(toObserver, i, bmType, ReadOnly, i, numOpPerThread)
+	}
+
+	consumerExitWg.Wait()
+	close(toObserver)
+	observerExitWg.Wait()
 }
 
 func main() {
-	bmType := CassOne
+	bmType := EtcdRaft
 	allocSessions(bmType)
 	initDatabase(bmType)
-	benchmark(3, bmType, Verbatim)
-	benchmark(6, bmType, Verbatim)
-	benchmark(9, bmType, Verbatim)
+	//benchmark(3, bmType)
+	//benchmark(6, bmType)
+	//benchmark(9, bmType)
+	simpleBenchmark(3, 5, bmType)
+	simpleBenchmark(4, 5, bmType)
+	simpleBenchmark(5, 5, bmType)
 	deallocSessions(bmType)
 }

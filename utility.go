@@ -119,7 +119,7 @@ type BmStats struct {
 	FWrite95pLat float64
 }
 
-// generates a YCSB-like benchmark report
+// generates a YCSB-like verbatimBenchmark report
 func (bm *BmStats) String() string {
 
 	var str string
@@ -177,8 +177,8 @@ func allocSessions(sessionType BmType) {
 		}
 	} else {
 		for i := 0; i < globalMaxThread; i++ {
-			ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-			etcdCntx[i] = ctx
+			//ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+			//etcdCntx[i] = ctx
 
 			cli, err := clientv3.New(clientv3.Config{
 				Endpoints:   []string{"localhost:2379"},
@@ -209,7 +209,8 @@ func initDatabase(sessionType BmType) {
 		}
 	} else {
 		cli := etcdClnt[0]
-		ctx := etcdCntx[0]
+		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+		//ctx := etcdCntx[0]
 		dresp, err := cli.Delete(ctx, blockIdPrefix, clientv3.WithPrefix())
 		if err != nil {
 			log.Fatal(err)
@@ -217,7 +218,7 @@ func initDatabase(sessionType BmType) {
 		fmt.Println("dresp", dresp)
 		for i := 0; i < maxBlock; i++ {
 			blockId := blockIdPrefix + strconv.Itoa(i)
-			SetBlockEtcd(*cli, ctx, &Block{blockId, ""})
+			SetBlockEtcd(*cli, &Block{blockId, ""})
 		}
 	}
 }
