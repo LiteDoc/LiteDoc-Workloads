@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-var currMaxThread = 5
-
 var cassPool [globalMaxThread]*gocql.Session
 var etcdCntx [globalMaxThread]context.Context
 var etcdClnt [globalMaxThread]*clientv3.Client
@@ -80,16 +78,16 @@ func consumer(toObserver chan<- Operation, toConsumer <-chan Operation,
 		op.Start = time.Now()
 		if op.Type == R {
 			//fmt.Println(txIdx, "get", blockId)
-			if txType != EtcdRaftType {
+			if txType != EtcdRaft {
 				GetBlockCass(*cassPool[txIdx], blockId)
 			} else {
 				GetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], blockId)
 			}
 		} else {
 			b := &Block{blockId, randString(generator, 50)}
-			if txType == CassOneType {
+			if txType == CassOne {
 				SetBlockCassOne(*cassPool[txIdx], b)
-			} else if txType == CassLwtType {
+			} else if txType == CassLwt {
 				SetBlockCassLwt(*cassPool[txIdx], b)
 			} else {
 				SetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], b)
@@ -168,14 +166,7 @@ func observer(toProducer chan<- Operation, toObserver <-chan Operation,
 	exitedWg.Done()
 }
 
-func main() {
-
-	allocSessions(EtcdRaftType)
-	initDatabase(EtcdRaftType)
-	//cli := etcdClnt[0]
-	//ctx := etcdCntx[0]
-	//SetBlockEtcd(*cli, ctx, &Block{"aaa", "bbb"})
-	//GetBlockEtcd(*cli, ctx, "aaa")
+func benchmark(bmType BmType, currMaxThread int) {
 	exitedWg.Add(currMaxThread + 2)
 	toConsumer := make(chan Operation)
 	toProducer := make(chan Operation)
@@ -183,9 +174,17 @@ func main() {
 	go producer(toProducer, toConsumer, toObserver, 5000)
 	go observer(toProducer, toObserver)
 	for i := 0; i < currMaxThread; i++ {
-		go consumer(toObserver, toConsumer, i, EtcdRaftType)
+		go consumer(toObserver, toConsumer, i, bmType)
 	}
 	exitedWg.Wait()
-	deallocSessions(EtcdRaftType)
+}
 
+func main() {
+	bmType := CassOne
+	allocSessions(bmType)
+	initDatabase(bmType)
+	benchmark(bmType, 3)
+	benchmark(bmType, 6)
+	benchmark(bmType, 9)
+	deallocSessions(bmType)
 }

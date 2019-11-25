@@ -6,6 +6,7 @@ import (
 	"github.com/gocql/gocql"
 	"go.etcd.io/etcd/clientv3"
 	"log"
+	"time"
 )
 
 type Block struct {
@@ -34,7 +35,8 @@ func GetBlockCass(session gocql.Session, blockId string) Block {
 }
 
 func SetBlockEtcd(cli clientv3.Client, ctx context.Context, b *Block) {
-	_, err := cli.Put(ctx, b.BlockId, b.Content)
+	ctx2, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	_, err := cli.Put(ctx2, b.BlockId, b.Content)
 	if err != nil {
 		log.Fatal("SetBlockEtcd ")
 	}
@@ -43,7 +45,8 @@ func SetBlockEtcd(cli clientv3.Client, ctx context.Context, b *Block) {
 
 func GetBlockEtcd(cli clientv3.Client, ctx context.Context, blockId string) Block {
 	b := Block{}
-	resp, err := cli.Get(ctx, blockId)
+	ctx2, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	resp, err := cli.Get(ctx2, blockId)
 	if err != nil {
 		log.Fatal("GetBlockEtcd ")
 	}

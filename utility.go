@@ -17,11 +17,11 @@ type BmType string
 
 const (
 	maxBlock                 = 100 // assume maxBlock > globalMaxThread
-	globalMaxThread          = 5
+	globalMaxThread          = 10
 	blockIdPrefix            = "doc:1-"
-	CassOneType     BmType   = "CassOneType"
-	CassLwtType     BmType   = "CassLwtType"
-	EtcdRaftType    BmType   = "EtcdRaftType"
+	CassOne         BmType   = "CassOne"
+	CassLwt         BmType   = "CassLwt"
+	EtcdRaft        BmType   = "EtcdRaft"
 	W               OpType   = "write"
 	R               OpType   = "read"
 	S               OpResult = "success"
@@ -159,7 +159,7 @@ func randString(r *rand.Rand, n int) string {
 }
 
 func allocSessions(sessionType BmType) {
-	if sessionType != EtcdRaftType {
+	if sessionType != EtcdRaft {
 		cluster := gocql.NewCluster("localhost")
 		cluster.Keyspace = Keyspace
 		for i := 0; i < globalMaxThread; i++ {
@@ -187,7 +187,7 @@ func allocSessions(sessionType BmType) {
 }
 
 func initDatabase(sessionType BmType) {
-	if sessionType != EtcdRaftType {
+	if sessionType != EtcdRaft {
 		if err := cassPool[0].Query(DropStmt).Exec(); err != nil {
 			log.Fatal("DropStmt ", err)
 		}
@@ -217,7 +217,7 @@ func initDatabase(sessionType BmType) {
 }
 
 func deallocSessions(sessionType BmType) {
-	if sessionType != EtcdRaftType {
+	if sessionType != EtcdRaft {
 		for i := 0; i < globalMaxThread; i++ {
 			cassPool[i].Close()
 		}
