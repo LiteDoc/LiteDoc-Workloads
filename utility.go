@@ -11,9 +11,12 @@ import (
 	"time"
 )
 
-type OpType string
-type OpResult string
-type BmType string
+type (
+	OpType   string
+	OpResult string
+	BmType   string
+	CsType   string
+)
 
 const (
 	maxBlock                 = 100 // assume maxBlock > globalMaxThread
@@ -22,6 +25,9 @@ const (
 	CassOne         BmType   = "CassOne"
 	CassLwt         BmType   = "CassLwt"
 	EtcdRaft        BmType   = "EtcdRaft"
+	ReadWrite       CsType   = "ReadWrite"
+	ReadOnly        CsType   = "ReadOnly"
+	Verbatim        CsType   = "Verbatim"
 	W               OpType   = "write"
 	R               OpType   = "read"
 	S               OpResult = "success"

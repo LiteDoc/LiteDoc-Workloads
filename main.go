@@ -69,33 +69,36 @@ func producer(toProducer <-chan Operation, toConsumer chan<- Operation, toObserv
 }
 
 func consumer(toObserver chan<- Operation, toConsumer <-chan Operation,
-	txIdx int, txType BmType) {
-	source := rand.NewSource(time.Now().UnixNano() + int64(txIdx))
-	generator := rand.New(source)
+	txIdx int, bmType BmType, csType CsType, csArgs ...string) {
+	switch csType {
+	case Verbatim:
+		source := rand.NewSource(time.Now().UnixNano() + int64(txIdx))
+		generator := rand.New(source)
 
-	for op := range toConsumer {
-		blockId := blockIdPrefix + strconv.Itoa(op.BlockIdInt)
-		op.Start = time.Now()
-		if op.Type == R {
-			//fmt.Println(txIdx, "get", blockId)
-			if txType != EtcdRaft {
-				GetBlockCass(*cassPool[txIdx], blockId)
+		for op := range toConsumer {
+			blockId := blockIdPrefix + strconv.Itoa(op.BlockIdInt)
+			op.Start = time.Now()
+			if op.Type == R {
+				//fmt.Println(txIdx, "get", blockId)
+				if bmType != EtcdRaft {
+					GetBlockCass(*cassPool[txIdx], blockId)
+				} else {
+					GetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], blockId)
+				}
 			} else {
-				GetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], blockId)
+				b := &Block{blockId, randString(generator, 50)}
+				if bmType == CassOne {
+					SetBlockCassOne(*cassPool[txIdx], b)
+				} else if bmType == CassLwt {
+					SetBlockCassLwt(*cassPool[txIdx], b)
+				} else {
+					SetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], b)
+				}
 			}
-		} else {
-			b := &Block{blockId, randString(generator, 50)}
-			if txType == CassOne {
-				SetBlockCassOne(*cassPool[txIdx], b)
-			} else if txType == CassLwt {
-				SetBlockCassLwt(*cassPool[txIdx], b)
-			} else {
-				SetBlockEtcd(*etcdClnt[txIdx], etcdCntx[txIdx], b)
-			}
+			op.End = time.Now()
+			op.Result = S // TODO
+			toObserver <- op
 		}
-		op.End = time.Now()
-		op.Result = S // TODO
-		toObserver <- op
 	}
 
 	fmt.Println(txIdx, "consumer exit")
@@ -166,7 +169,7 @@ func observer(toProducer chan<- Operation, toObserver <-chan Operation,
 	exitedWg.Done()
 }
 
-func benchmark(bmType BmType, currMaxThread int) {
+func benchmark(currMaxThread int, bmType BmType, csType CsType, csArgs ...string) {
 	exitedWg.Add(currMaxThread + 2)
 	toConsumer := make(chan Operation)
 	toProducer := make(chan Operation)
@@ -174,7 +177,7 @@ func benchmark(bmType BmType, currMaxThread int) {
 	go producer(toProducer, toConsumer, toObserver, 5000)
 	go observer(toProducer, toObserver)
 	for i := 0; i < currMaxThread; i++ {
-		go consumer(toObserver, toConsumer, i, bmType)
+		go consumer(toObserver, toConsumer, i, bmType, csType, csArgs...)
 	}
 	exitedWg.Wait()
 }
@@ -183,8 +186,8 @@ func main() {
 	bmType := CassOne
 	allocSessions(bmType)
 	initDatabase(bmType)
-	benchmark(bmType, 3)
-	benchmark(bmType, 6)
-	benchmark(bmType, 9)
+	benchmark(3, bmType, Verbatim)
+	benchmark(6, bmType, Verbatim)
+	benchmark(9, bmType, Verbatim)
 	deallocSessions(bmType)
 }
