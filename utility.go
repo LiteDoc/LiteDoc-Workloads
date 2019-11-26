@@ -19,8 +19,8 @@ type (
 )
 
 const (
-	maxBlock                 = 100 // assume maxBlock > globalMaxThread
-	globalMaxThread          = 10
+	maxBlock                 = 50 // assume maxBlock > globalMaxThread
+	globalMaxThread          = 20
 	blockIdPrefix            = "doc:1-"
 	CassOne         BmType   = "CassOne"
 	CassLwt         BmType   = "CassLwt"
@@ -41,10 +41,10 @@ const (
 	InsertStmt    = `INSERT INTO usertable (y_id, field0) VALUES (?, ?)`
 	SelectStmt    = `SELECT * FROM usertable WHERE y_id = ? LIMIT 1`
 	InsertLwtStmt = `INSERT INTO usertable (y_id, field0) VALUES (?, ?) IF NOT EXISTS`
-	UpdateLwtStmt = `UPDATE usertable SET field0 = ? WHERE y_id = ?`
-	DropStmt      = `DROP KEYSPACE ycsb`
+	UpdateLwtStmt = `UPDATE usertable SET field0 = ? WHERE y_id = ? IF y_id = ?`
+	DropStmt      = `DROP KEYSPACE ycsb;`
 	CreateKs      = `CREATE KEYSPACE ycsb WITH REPLICATION = 
-	{'class' : 'SimpleStrategy', 'replication_factor': 1};`
+	{'class' : 'SimpleStrategy', 'replication_factor': 3};`
 	CreateTb = `CREATE TABLE ycsb.usertable
 	( y_id   VARCHAR PRIMARY KEY,
 	  field0 VARCHAR );`
@@ -166,8 +166,8 @@ func randString(r *rand.Rand, n int) string {
 }
 
 func allocSessions(sessionType BmType) {
-	if sessionType != EtcdRaft {
-		cluster := gocql.NewCluster("localhost")
+	if sessionType == CassOne || sessionType == CassLwt {
+		cluster := gocql.NewCluster("10.0.0.1")
 		cluster.Keyspace = Keyspace
 		for i := 0; i < globalMaxThread; i++ {
 			session, err := cluster.CreateSession()
@@ -182,7 +182,8 @@ func allocSessions(sessionType BmType) {
 			//etcdCntx[i] = ctx
 
 			cli, err := clientv3.New(clientv3.Config{
-				Endpoints:   []string{"localhost:2379"},
+				//Endpoints:   []string{"localhost:2379"},
+				Endpoints:   []string{"10.0.0.1:2379", "10.0.0.2:2379", "10.0.0.3:2379"},
 				DialTimeout: 5 * time.Second,
 			})
 			if err != nil {
@@ -194,7 +195,7 @@ func allocSessions(sessionType BmType) {
 }
 
 func initDatabase(sessionType BmType) {
-	if sessionType != EtcdRaft {
+	if sessionType == CassOne || sessionType == CassLwt {
 		if err := cassPool[0].Query(DropStmt).Exec(); err != nil {
 			log.Fatal("DropStmt ", err)
 		}
@@ -225,7 +226,7 @@ func initDatabase(sessionType BmType) {
 }
 
 func deallocSessions(sessionType BmType) {
-	if sessionType != EtcdRaft {
+	if sessionType == CassOne || sessionType == CassLwt {
 		for i := 0; i < globalMaxThread; i++ {
 			cassPool[i].Close()
 		}

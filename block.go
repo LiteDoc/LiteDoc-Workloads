@@ -22,7 +22,7 @@ func SetBlockCassOne(session gocql.Session, b *Block) {
 }
 
 func SetBlockCassLwt(session gocql.Session, b *Block) {
-	if err := session.Query(UpdateLwtStmt, b.BlockId, b.Content).Exec(); err != nil {
+	if err := session.Query(UpdateLwtStmt, b.Content, b.BlockId, b.BlockId).Exec(); err != nil {
 		log.Fatal("SetBlockCassLwt ", err)
 	}
 }

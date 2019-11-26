@@ -51,7 +51,7 @@ func producer(toProducer <-chan Operation, toConsumer chan<- Operation,
 		}
 	}
 	close(toConsumer)
-	fmt.Println("outstanding", outstanding)
+	//fmt.Println("outstanding", outstanding)
 	producerExitWg.Done()
 
 }
@@ -86,7 +86,7 @@ func consumer(toObserver chan<- Operation, toConsumer <-chan Operation,
 		toObserver <- op
 	}
 
-	fmt.Println(txIdx, "consumer exit")
+	//fmt.Println(txIdx, "consumer exit")
 	consumerExitWg.Done()
 }
 
@@ -152,7 +152,7 @@ func observer(toProducer chan<- Operation, toObserver <-chan Operation,
 		FWrite95pLat: fWriteLat.get95pLat(),
 	}
 	fmt.Println(bmStats.String())
-	fmt.Println("observer exit")
+	//fmt.Println("observer exit")
 	observerExitWg.Done()
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gocql/gocql"
 	"go.etcd.io/etcd/clientv3"
 	"math/rand"
@@ -73,6 +74,7 @@ func simpleConsumer(toObserver chan<- Operation,
 }
 
 func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
+	//numOpPerThread := 10000
 	numOpPerThread := 1000
 
 	observerExitWg.Add(1)
@@ -80,6 +82,13 @@ func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
 
 	toProducer := make(chan Operation)
 	toObserver := make(chan Operation)
+
+	fmt.Println()
+	fmt.Println("Parameters:")
+	fmt.Println("Benchmark Type = ", bmType)
+	fmt.Println("Num readWrite Thread = ", readWrite)
+	fmt.Println("Num readOnly Thread = ", readOnly)
+	fmt.Println("Num Op Per Thread = ", numOpPerThread)
 
 	go observer(toProducer, toObserver, true)
 	for i := 0; i < readWrite; i++ {
@@ -95,14 +104,21 @@ func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
 }
 
 func main() {
-	bmType := EtcdRaft
+	bmType := CassLwt
 	allocSessions(bmType)
 	initDatabase(bmType)
 	//benchmark(3, bmType)
 	//benchmark(6, bmType)
 	//benchmark(9, bmType)
-	simpleBenchmark(3, 5, bmType)
-	simpleBenchmark(4, 5, bmType)
-	simpleBenchmark(1, 0, bmType)
+	//simpleBenchmark(10, 10, bmType)
+	//simpleBenchmark(10, 20, bmType)
+	//simpleBenchmark(10, 30, bmType)
+	//simpleBenchmark(10, 40, bmType)
+	//simpleBenchmark(10, 50, bmType)
+	//simpleBenchmark(10, 10, bmType)
+	//simpleBenchmark(10, 70, bmType)
+	//simpleBenchmark(10, 80, bmType)
+	//simpleBenchmark(10, 90, bmType)
+	//simpleBenchmark(10, 100, bmType)
 	deallocSessions(bmType)
 }
