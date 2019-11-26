@@ -6,6 +6,7 @@ import (
 	"github.com/gocql/gocql"
 	"go.etcd.io/etcd/clientv3"
 	"log"
+	"math/rand"
 	"time"
 )
 
@@ -39,6 +40,19 @@ func SetBlockEtcd(cli clientv3.Client, b *Block) {
 	_, err := cli.Put(ctx2, b.BlockId, b.Content)
 	if err != nil {
 		log.Fatal("SetBlockEtcd ")
+	}
+	//fmt.Println(resp)
+}
+
+func SetBlockEtcdTxn(cli clientv3.Client, b *Block, rand *rand.Rand) {
+	ctx2, _ := context.WithTimeout(context.TODO(), 10*time.Second)
+	str := randString(rand, 50)
+	_, err := cli.Txn(ctx2).
+		If(clientv3.Compare(clientv3.Value(b.BlockId), "<", str)).
+		Then(clientv3.OpPut(b.BlockId, str)).
+		Else(clientv3.OpPut(b.BlockId, b.Content)).Commit()
+	if err != nil {
+		log.Fatal("SetBlockEtcdTxn ")
 	}
 	//fmt.Println(resp)
 }

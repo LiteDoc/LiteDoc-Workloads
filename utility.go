@@ -25,6 +25,7 @@ const (
 	CassOne         BmType   = "CassOne"
 	CassLwt         BmType   = "CassLwt"
 	EtcdRaft        BmType   = "EtcdRaft"
+	EtcdRaftTxn     BmType   = "EtcdRaftTxn"
 	ReadWrite       CsType   = "ReadWrite"
 	ReadOnly        CsType   = "ReadOnly"
 	Verbatim        CsType   = "Verbatim"
