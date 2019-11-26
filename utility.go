@@ -19,35 +19,40 @@ type (
 )
 
 const (
-	maxBlock                 = 50 // assume maxBlock > globalMaxThread
-	globalMaxThread          = 20
-	blockIdPrefix            = "doc:1-"
-	CassOne         BmType   = "CassOne"
-	CassLwt         BmType   = "CassLwt"
-	EtcdRaft        BmType   = "EtcdRaft"
-	EtcdRaftTxn     BmType   = "EtcdRaftTxn"
-	ReadWrite       CsType   = "ReadWrite"
-	ReadOnly        CsType   = "ReadOnly"
-	Verbatim        CsType   = "Verbatim"
-	W               OpType   = "write"
-	R               OpType   = "read"
-	S               OpResult = "success"
-	F               OpResult = "failed"
-	Letters                  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	maxBlock                  = 50 // assume maxBlock > globalMaxThread
+	globalMaxThread           = 50
+	blockIdPrefix             = "doc:1-"
+	CassOne          BmType   = "CassOne"
+	CassLwt          BmType   = "CassLwt"
+	EtcdRaft         BmType   = "EtcdRaft"
+	EtcdRaftTxn      BmType   = "EtcdRaftTxn"
+	ReadWrite        CsType   = "ReadWrite"
+	ReadOnly         CsType   = "ReadOnly"
+	Verbatim         CsType   = "Verbatim"
+	W                OpType   = "write"
+	R                OpType   = "read"
+	S                OpResult = "success"
+	F                OpResult = "failed"
+	Letters                   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	cCDefaultTimeout          = 2 * time.Second
 )
 
 const (
 	Keyspace      = `ycsb`
 	InsertStmt    = `INSERT INTO usertable (y_id, field0) VALUES (?, ?)`
-	SelectStmt    = `SELECT * FROM usertable WHERE y_id = ? LIMIT 1`
+	SelectStmt    = `SELECT y_id, field0 FROM usertable WHERE y_id = ? LIMIT 1`
 	InsertLwtStmt = `INSERT INTO usertable (y_id, field0) VALUES (?, ?) IF NOT EXISTS`
-	UpdateLwtStmt = `UPDATE usertable SET field0 = ? WHERE y_id = ? IF y_id = ?`
+	UpdateLwtStmt = `UPDATE usertable SET field0 = ? WHERE y_id = ? IF field0 != ?`
 	DropStmt      = `DROP KEYSPACE ycsb;`
 	CreateKs      = `CREATE KEYSPACE ycsb WITH REPLICATION = 
 	{'class' : 'SimpleStrategy', 'replication_factor': 3};`
+	//CreateTb = `CREATE TABLE ycsb.usertable
+	//( y_id   VARCHAR PRIMARY KEY,
+	//  field0 VARCHAR );`
 	CreateTb = `CREATE TABLE ycsb.usertable
 	( y_id   VARCHAR PRIMARY KEY,
-	  field0 VARCHAR );`
+	  field0 VARCHAR,
+      tag varchar );`
 )
 
 type latency []time.Duration
@@ -167,8 +172,11 @@ func randString(r *rand.Rand, n int) string {
 
 func allocSessions(sessionType BmType) {
 	if sessionType == CassOne || sessionType == CassLwt {
-		cluster := gocql.NewCluster("10.0.0.1")
+		//cluster := gocql.NewCluster("10.0.0.1")
+		cluster := gocql.NewCluster("10.0.0.1", "10.0.0.2", "10.0.0.3")
+		//cluster := gocql.NewCluster("localhost")
 		cluster.Keyspace = Keyspace
+		cluster.Timeout = cCDefaultTimeout
 		for i := 0; i < globalMaxThread; i++ {
 			session, err := cluster.CreateSession()
 			if err != nil {

@@ -74,8 +74,8 @@ func simpleConsumer(toObserver chan<- Operation,
 }
 
 func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
-	//numOpPerThread := 10000
-	numOpPerThread := 1000
+	numOpPerThread := 10000
+	//numOpPerThread := 1000
 
 	observerExitWg.Add(1)
 	consumerExitWg.Add(readWrite + readOnly)
@@ -104,7 +104,7 @@ func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
 }
 
 func main() {
-	bmType := CassLwt
+	bmType := CassOne
 	allocSessions(bmType)
 	initDatabase(bmType)
 	//benchmark(3, bmType)
@@ -114,11 +114,12 @@ func main() {
 	//simpleBenchmark(10, 20, bmType)
 	//simpleBenchmark(10, 30, bmType)
 	//simpleBenchmark(10, 40, bmType)
-	//simpleBenchmark(10, 50, bmType)
 	//simpleBenchmark(10, 10, bmType)
-	//simpleBenchmark(10, 70, bmType)
-	//simpleBenchmark(10, 80, bmType)
-	//simpleBenchmark(10, 90, bmType)
+	simpleBenchmark(10, 0, bmType)
+	simpleBenchmark(10, 10, bmType)
+	simpleBenchmark(10, 20, bmType)
+	simpleBenchmark(10, 30, bmType)
+	simpleBenchmark(10, 40, bmType)
 	//simpleBenchmark(10, 100, bmType)
 	deallocSessions(bmType)
 }
