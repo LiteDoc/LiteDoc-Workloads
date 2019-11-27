@@ -73,10 +73,8 @@ func consumer(toObserver chan<- Operation, toConsumer <-chan Operation,
 			}
 		} else {
 			b := &Block{blockId, randString(ran, 50)}
-			if bmType == CassOne {
+			if bmType == CassDef {
 				SetBlockCassOne(*cassPool[txIdx], b)
-			} else if bmType == CassLwt {
-				SetBlockCassLwt(*cassPool[txIdx], b)
 			} else {
 				SetBlockEtcd(*etcdClnt[txIdx], b)
 			}

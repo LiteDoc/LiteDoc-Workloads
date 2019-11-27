@@ -39,7 +39,7 @@ func simpleConsumer(toObserver chan<- Operation,
 		op.BlockIdInt = blockIdInt
 		op.Type = R
 		op.Start = time.Now()
-		if bmType == CassOne || bmType == CassLwt {
+		if bmType == CassDef {
 			GetBlockCass(*cassPool[txIdx], blockId)
 		} else {
 			GetBlockEtcd(*etcdClnt[txIdx], blockId)
@@ -55,14 +55,10 @@ func simpleConsumer(toObserver chan<- Operation,
 			op.Type = W
 			op.Start = time.Now()
 			b := &Block{blockId, randString(gen, 50)}
-			if bmType == CassOne {
+			if bmType == CassDef {
 				SetBlockCassOne(*cassPool[txIdx], b)
-			} else if bmType == CassLwt {
-				SetBlockCassLwt(*cassPool[txIdx], b)
 			} else if bmType == EtcdRaft {
 				SetBlockEtcd(*etcdClnt[txIdx], b)
-			} else if bmType == EtcdRaftTxn {
-				SetBlockEtcdTxn(*etcdClnt[txIdx], b, gen)
 			}
 			op.End = time.Now()
 			op.Result = S
@@ -75,7 +71,7 @@ func simpleConsumer(toObserver chan<- Operation,
 
 func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
 	numOpPerThread := 10000
-	//numOpPerThread := 1000
+	//numOpPerThread := 500
 
 	observerExitWg.Add(1)
 	consumerExitWg.Add(readWrite + readOnly)
@@ -104,22 +100,13 @@ func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
 }
 
 func main() {
-	bmType := CassOne
+	bmType := CassDef
 	allocSessions(bmType)
 	initDatabase(bmType)
-	//benchmark(3, bmType)
-	//benchmark(6, bmType)
-	//benchmark(9, bmType)
-	//simpleBenchmark(10, 10, bmType)
-	//simpleBenchmark(10, 20, bmType)
-	//simpleBenchmark(10, 30, bmType)
-	//simpleBenchmark(10, 40, bmType)
-	//simpleBenchmark(10, 10, bmType)
 	simpleBenchmark(10, 0, bmType)
 	simpleBenchmark(10, 10, bmType)
 	simpleBenchmark(10, 20, bmType)
 	simpleBenchmark(10, 30, bmType)
 	simpleBenchmark(10, 40, bmType)
-	//simpleBenchmark(10, 100, bmType)
 	deallocSessions(bmType)
 }

@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -22,38 +23,43 @@ const (
 	maxBlock                  = 50 // assume maxBlock > globalMaxThread
 	globalMaxThread           = 50
 	blockIdPrefix             = "doc:1-"
-	CassOne          BmType   = "CassOne"
-	CassLwt          BmType   = "CassLwt"
+	CassDef          BmType   = "CassDef"
 	EtcdRaft         BmType   = "EtcdRaft"
-	EtcdRaftTxn      BmType   = "EtcdRaftTxn"
 	ReadWrite        CsType   = "ReadWrite"
 	ReadOnly         CsType   = "ReadOnly"
-	Verbatim         CsType   = "Verbatim"
 	W                OpType   = "write"
 	R                OpType   = "read"
 	S                OpResult = "success"
 	F                OpResult = "failed"
 	Letters                   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	cCDefaultTimeout          = 2 * time.Second
+	cCDefaultTimeout          = 20 * time.Second
 )
 
 const (
-	Keyspace      = `ycsb`
-	InsertStmt    = `INSERT INTO usertable (y_id, field0) VALUES (?, ?)`
-	SelectStmt    = `SELECT y_id, field0 FROM usertable WHERE y_id = ? LIMIT 1`
-	InsertLwtStmt = `INSERT INTO usertable (y_id, field0) VALUES (?, ?) IF NOT EXISTS`
+	Keyspace   = `ycsb`
+	InsertStmt = `INSERT INTO usertable (y_id, field0) VALUES (?, ?)`
+	SelectStmt = `SELECT y_id, field0 FROM usertable WHERE y_id = ? LIMIT 1`
+	//InsertLwtStmt = `INSERT INTO usertable (y_id, field0) VALUES (?, ?) IF NOT EXISTS`
 	UpdateLwtStmt = `UPDATE usertable SET field0 = ? WHERE y_id = ? IF field0 != ?`
 	DropStmt      = `DROP KEYSPACE ycsb;`
-	CreateKs      = `CREATE KEYSPACE ycsb WITH REPLICATION = 
-	{'class' : 'SimpleStrategy', 'replication_factor': 3};`
-	//CreateTb = `CREATE TABLE ycsb.usertable
-	//( y_id   VARCHAR PRIMARY KEY,
-	//  field0 VARCHAR );`
-	CreateTb = `CREATE TABLE ycsb.usertable
-	( y_id   VARCHAR PRIMARY KEY,
-	  field0 VARCHAR,
-      tag varchar );`
+
+	CreateKsRf1 = `CREATE KEYSPACE ycsb WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor': 1};`
+	CreateKsRf3 = `CREATE KEYSPACE ycsb WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor': 3};`
+
+	CreateTbNor = `CREATE TABLE ycsb.usertable ( y_id VARCHAR PRIMARY KEY, field0 VARCHAR );`
+	CreateTbTag = `CREATE TABLE ycsb.usertable ( y_id VARCHAR PRIMARY KEY, field0 VARCHAR, tag varchar );`
 )
+
+//var cluster = gocql.NewCluster("localhost")
+//var cluster = gocql.NewCluster("10.0.0.1")
+var cluster = gocql.NewCluster("10.0.0.1", "10.0.0.2", "10.0.0.3")
+
+const CreateKs = CreateKsRf3
+const CreateTb = CreateTbTag
+
+var etcd1 = []string{"localhost:2379"}
+var etcd2 = []string{"10.0.0.1:2379", "10.0.0.2:2379", "10.0.0.3:2379"}
+var etcdEps = etcd2
 
 type latency []time.Duration
 
@@ -171,39 +177,47 @@ func randString(r *rand.Rand, n int) string {
 }
 
 func allocSessions(sessionType BmType) {
-	if sessionType == CassOne || sessionType == CassLwt {
-		//cluster := gocql.NewCluster("10.0.0.1")
-		cluster := gocql.NewCluster("10.0.0.1", "10.0.0.2", "10.0.0.3")
-		//cluster := gocql.NewCluster("localhost")
+	var localWg sync.WaitGroup
+	localWg.Add(globalMaxThread)
+	if sessionType == CassDef {
 		cluster.Keyspace = Keyspace
 		cluster.Timeout = cCDefaultTimeout
 		for i := 0; i < globalMaxThread; i++ {
-			session, err := cluster.CreateSession()
-			if err != nil {
-				log.Fatal(err)
-			}
-			cassPool[i] = session
+			go func(i int) {
+				fmt.Println("i", i)
+				session, err := cluster.CreateSession()
+				if err != nil {
+					log.Fatal(err)
+				}
+				cassPool[i] = session
+				fmt.Println("i", i)
+				localWg.Done()
+			}(i)
 		}
 	} else {
 		for i := 0; i < globalMaxThread; i++ {
-			//ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-			//etcdCntx[i] = ctx
-
-			cli, err := clientv3.New(clientv3.Config{
-				//Endpoints:   []string{"localhost:2379"},
-				Endpoints:   []string{"10.0.0.1:2379", "10.0.0.2:2379", "10.0.0.3:2379"},
-				DialTimeout: 5 * time.Second,
-			})
-			if err != nil {
-				log.Fatal(err)
-			}
-			etcdClnt[i] = cli
+			go func(i int) {
+				fmt.Println("i", i)
+				cli, err := clientv3.New(clientv3.Config{
+					Endpoints:   etcdEps,
+					DialTimeout: 20 * time.Second,
+				})
+				if err != nil {
+					log.Fatal(err)
+				}
+				etcdClnt[i] = cli
+				fmt.Println("i", i)
+				localWg.Done()
+			}(i)
 		}
 	}
+	localWg.Wait()
 }
 
 func initDatabase(sessionType BmType) {
-	if sessionType == CassOne || sessionType == CassLwt {
+	src := rand.NewSource(time.Now().UnixNano() + int64(txIdx))
+	gen := rand.New(src)
+	if sessionType == CassDef {
 		if err := cassPool[0].Query(DropStmt).Exec(); err != nil {
 			log.Fatal("DropStmt ", err)
 		}
@@ -215,12 +229,11 @@ func initDatabase(sessionType BmType) {
 		}
 		for i := 0; i < maxBlock; i++ {
 			blockId := blockIdPrefix + strconv.Itoa(i)
-			SetBlockCassOne(*cassPool[0], &Block{blockId, ""})
+			SetBlockCassOne(*cassPool[0], &Block{blockId, randString(gen, 50)})
 		}
 	} else {
 		cli := etcdClnt[0]
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-		//ctx := etcdCntx[0]
 		dresp, err := cli.Delete(ctx, blockIdPrefix, clientv3.WithPrefix())
 		if err != nil {
 			log.Fatal(err)
@@ -228,13 +241,13 @@ func initDatabase(sessionType BmType) {
 		fmt.Println("dresp", dresp)
 		for i := 0; i < maxBlock; i++ {
 			blockId := blockIdPrefix + strconv.Itoa(i)
-			SetBlockEtcd(*cli, &Block{blockId, ""})
+			SetBlockEtcd(*cli, &Block{blockId, randString(gen, 50)})
 		}
 	}
 }
 
 func deallocSessions(sessionType BmType) {
-	if sessionType == CassOne || sessionType == CassLwt {
+	if sessionType == CassDef {
 		for i := 0; i < globalMaxThread; i++ {
 			cassPool[i].Close()
 		}
