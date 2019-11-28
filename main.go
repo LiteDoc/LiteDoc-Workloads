@@ -70,8 +70,7 @@ func simpleConsumer(toObserver chan<- Operation,
 }
 
 func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
-	numOpPerThread := 10000
-	//numOpPerThread := 500
+	numOpPerThread := 50000
 
 	observerExitWg.Add(1)
 	consumerExitWg.Add(readWrite + readOnly)
@@ -100,13 +99,17 @@ func simpleBenchmark(readWrite int, readOnly int, bmType BmType) {
 }
 
 func main() {
-	bmType := CassDef
+	bmType := EtcdRaft
 	allocSessions(bmType)
 	initDatabase(bmType)
-	simpleBenchmark(10, 0, bmType)
-	simpleBenchmark(10, 10, bmType)
-	simpleBenchmark(10, 20, bmType)
-	simpleBenchmark(10, 30, bmType)
+	//simpleBenchmark(10, 0, bmType)
+	//simpleBenchmark(10, 10, bmType)
+	//simpleBenchmark(10, 20, bmType)
+	//simpleBenchmark(10, 30, bmType)
 	simpleBenchmark(10, 40, bmType)
+	//simpleBenchmark(10, 40, bmType)
+	//simpleBenchmark(10, 40, bmType)
+	//simpleBenchmark(10, 40, bmType)
+	//simpleBenchmark(10, 40, bmType)
 	deallocSessions(bmType)
 }

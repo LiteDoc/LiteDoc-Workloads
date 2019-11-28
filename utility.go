@@ -184,20 +184,17 @@ func allocSessions(sessionType BmType) {
 		cluster.Timeout = cCDefaultTimeout
 		for i := 0; i < globalMaxThread; i++ {
 			go func(i int) {
-				fmt.Println("i", i)
 				session, err := cluster.CreateSession()
 				if err != nil {
 					log.Fatal(err)
 				}
 				cassPool[i] = session
-				fmt.Println("i", i)
 				localWg.Done()
 			}(i)
 		}
 	} else {
 		for i := 0; i < globalMaxThread; i++ {
 			go func(i int) {
-				fmt.Println("i", i)
 				cli, err := clientv3.New(clientv3.Config{
 					Endpoints:   etcdEps,
 					DialTimeout: 20 * time.Second,
@@ -206,7 +203,6 @@ func allocSessions(sessionType BmType) {
 					log.Fatal(err)
 				}
 				etcdClnt[i] = cli
-				fmt.Println("i", i)
 				localWg.Done()
 			}(i)
 		}
@@ -215,7 +211,7 @@ func allocSessions(sessionType BmType) {
 }
 
 func initDatabase(sessionType BmType) {
-	src := rand.NewSource(time.Now().UnixNano() + int64(txIdx))
+	src := rand.NewSource(time.Now().UnixNano())
 	gen := rand.New(src)
 	if sessionType == CassDef {
 		if err := cassPool[0].Query(DropStmt).Exec(); err != nil {
