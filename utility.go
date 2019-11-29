@@ -11,7 +11,8 @@ import (
 	"sync"
 	"time"
 )
-
+// some code is due to NFSB,
+// see https://github.com/haochenpan/NFSB/blob/master/GNF/utilities.go
 type (
 	OpType   string
 	OpResult string
@@ -106,8 +107,6 @@ type Operation struct {
 	End        time.Time
 }
 
-// TODO: change the name to StatsMsg
-// from statistics thread to executor then to pub thread / print out
 type BmStats struct {
 	Timestamp string // e.g. get from time.Now().String()
 
